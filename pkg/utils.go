@@ -91,18 +91,20 @@ NextRune:
 				i = i + 1
 				continue
 			}
+			// If the current rune is the same as the last quote rune, we have reached the end of the quoted string.
+			if head == lastQuoteRune {
+				lastQuoteRune = 0
+				continue
+			}
+			builder.WriteRune(head)
+			continue
 		}
-		for _, quoteRune := range quoteRunes {
-			if head == quoteRune {
-				lastQuoteRune = quoteRune
+		if head == quoteEscapeRune && i < len(cmdlineRune)-1 {
+			for _, qr := range quoteRunes {
+				lastQuoteRune = qr
 				lastQuotePos = i
 				continue NextRune
 			}
-		}
-		if unicode.IsSpace(head) && lastQuoteRune == 0 {
-			tokenizedLines = append(tokenizedLines, builder.String())
-			builder.Reset()
-			continue
 		}
 	}
 	return tokenizedLines, nil
