@@ -3,6 +3,8 @@ package pkg
 import (
 	"strings"
 	"unicode"
+
+	"github.com/pkg/errors"
 )
 
 const (
@@ -15,6 +17,9 @@ const (
 	// This constant is used when an error occurs due to a missing or mismatched quote in
 	// the input, signaling that the quoted text was not properly closed.
 	errUnterminatedQuote = 3
+
+	// Three characters used to represent the ellipsis in a string.
+	threeChars = 3
 )
 
 var (
@@ -58,6 +63,18 @@ var (
 	//    builder.WriteString("world!")
 	//    result := builder.String() // result will be "Hello, world!"
 	builder strings.Builder
+
+	// preContext and postContext are string variables used to hold portions of the original
+	// string before and after the ellipsis, respectively. These variables are typically used
+	// within the `Ellipsize` function to store the preserved segments of the string before
+	// and after the truncation process.
+	//
+	// - preContext stores the substring from the start of the string up to the `from` index.
+	// - postContext stores the substring from the `to` index onward to the end of the string.
+	//
+	// These variables help in constructing the final ellipsized string that combines
+	// the preserved parts with an ellipsis in the middle.
+	preContext, postContext string
 )
 
 // Function TokenizeLine splits the given command line string into individual tokens.
@@ -101,11 +118,71 @@ NextRune:
 		}
 		if head == quoteEscapeRune && i < len(cmdlineRune)-1 {
 			for _, qr := range quoteRunes {
+				if cmdlineRune[i+1] == qr {
+					builder.WriteRune(qr)
+					i = i + 1
+					continue NextRune
+				}
+			}
+		}
+		// If the current rune is a quote rune, we need to start a quoted string.
+		for _, qr := range quoteRunes {
+			if head == qr {
 				lastQuoteRune = qr
 				lastQuotePos = i
 				continue NextRune
 			}
 		}
+		// If the current rune is a space, we have reached the end of a token.
+		if unicode.IsSpace(head) && lastQuoteRune == 0 {
+			tokenizedLines = append(tokenizedLines, builder.String())
+			builder.Reset()
+			continue
+		}
+		builder.WriteRune(head)
+	}
+	if lastQuoteRune > 0 {
+		context := Ellipsize(
+			lastQuotePos-errUnterminatedQuote,
+			lastQuotePos+errUnterminatedQuote+1,
+			cmdline,
+		)
+		return nil, errors.Errorf("Unterminated quote at position %d: %s", lastQuotePos, context)
+	}
+	if builder.Len() > 0 {
+		tokenizedLines = append(tokenizedLines, builder.String())
 	}
 	return tokenizedLines, nil
+}
+
+// Ellipsize shortens a string by replacing the middle part with an ellipsis ("...").
+// This function takes a string `str` and truncates it such that the start of the string
+// is preserved up to the `from` index, and the end of the string is preserved from the `to` index.
+// The middle portion of the string between `from` and `to` is replaced with an ellipsis.
+// If the `from` and `to` indices do not leave enough room for the ellipsis, the original string may be returned.
+//
+// Parameters:
+//   - from: The index at which to start preserving the string from the beginning.
+//   - to: The index at which to start preserving the string from the end.
+//   - val: The original string to be ellipsized.
+//
+// Returns:
+//   - A new string where the middle portion between `from` and `to` is replaced with an ellipsis,
+//     or the original string if the indices do not allow for proper truncation.
+func Ellipsize(from, to int, val string) string {
+	preContextIndex := from
+	if preContextIndex <= threeChars {
+		preContextIndex = 0
+		preContext = ""
+	} else {
+		preContext = "..."
+	}
+	postContextIndex := to
+	if postContextIndex >= (len(val) - threeChars) {
+		postContextIndex = len(val)
+		postContext = ""
+	} else {
+		postContext = "..."
+	}
+	return preContext + val[preContextIndex:postContextIndex] + postContext
 }
