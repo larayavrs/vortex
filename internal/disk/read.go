@@ -74,3 +74,46 @@ func CaptureEditorOutput(tempfile *os.File) (string, error) {
 	}
 	return string(tempfileContents), nil
 }
+
+// Function LoadEditedTemplateContent reads and returns the content of a template file after it has been edited.
+// This function is designed to load a template file, open it in an external editor for the user to make
+// changes, and then read the modified content once the editing process is complete. The function handles
+// the entire lifecycle, from opening the file in the editor to capturing and returning the updated content.
+//
+// Parameters:
+//   - srcTemp: The name of the template file that will be opened and edited. This should be
+//     a valid path to an existing template file on the filesystem.
+//
+// Returns:
+//   - A string containing the edited content of the template file.
+//   - An error if there is an issue with opening the file, launching the editor, or reading the updated content.
+func LoadEditedTemplateContent(srcTemp string) (string, error) {
+	rawTemplate, err := os.Open(srcTemp)
+	if err != nil {
+		return "", errors.Wrapf(err, "Cannot open the template file: %s", srcTemp)
+	}
+
+	// Ini format is not supported by the editor, so we need to convert it to a supported format before editing
+	tempFile, err := os.CreateTemp("", "vtx*.ini")
+	if err != nil {
+		return "", errors.Wrap(err, "Failed to create a temporary file")
+	}
+
+	defer func() {
+		if rmvErr := os.Remove(tempFile.Name()); rmvErr != nil {
+			wrappedRmvErr := errors.Wrapf(rmvErr, "Failed to remove the temporary file: %s", tempFile.Name())
+			if err == nil {
+				err = errors.WithMessage(wrappedRmvErr, "Failed to remove the temporary file")
+			} else {
+				err = errors.Wrap(err, wrappedRmvErr.Error())
+			}
+		}
+	}()
+
+	_, err = io.Copy(tempFile, rawTemplate)
+	if err != nil {
+		return "", errors.Wrap(err, "Failed to copy the template file to the temporary file")
+	}
+
+	return CaptureEditorOutput(tempFile)
+}
