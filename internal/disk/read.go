@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/larayavrs/vortex/pkg"
 	"github.com/pkg/errors"
@@ -116,4 +117,30 @@ func LoadEditedTemplateContent(srcTemp string) (string, error) {
 	}
 
 	return CaptureEditorOutput(tempFile)
+}
+
+// The function ReadRawTemplateString reads the raw content of a template file and optionally allows for its editing.
+// This function checks if the provided filename has a specific suffix indicating that the file should
+// be opened in an editor for editing. If the suffix is present, it trims the suffix and opens the file
+// in the editor, returning the modified content. If the suffix is not present, it reads the content of
+// the file directly from the filesystem.
+//
+// Parameters:
+//   - tmpFilename: The name of the template file to read. If the filename ends with `editFileSuffix`,
+//     the function will open the file in an editor for editing.
+//
+// Returns:
+//   - A string containing the raw or edited content of the template file.
+//   - An error if there is an issue reading the file or loading the edited content.
+func ReadRawTemplateString(tmpFilename string) (string, error) {
+	if strings.HasSuffix(tmpFilename, editFileSuffix) {
+		return LoadEditedTemplateContent(strings.TrimSuffix(tmpFilename, editFileSuffix))
+	}
+
+	fcontents, err := os.ReadFile(tmpFilename)
+	if err != nil {
+		return "", errors.Wrapf(err, "Failed to read the file: %s", tmpFilename)
+	}
+
+	return string(fcontents), nil
 }
